@@ -10,6 +10,7 @@ export interface FlowEdge {
     id: string;
     source: string;
     target: string;
+    sourceHandle?: string;
 }
 
 import { getDb } from '../db';
@@ -152,6 +153,34 @@ export class FlowEngine {
                         context.data[node.id] = { error: error.message, response: error.response?.data };
                     }
                     break;
+                case 'condition':
+                    console.log('Evaluating Condition script');
+                    try {
+                        const scriptCode = nodeData.condition;
+                        const isolate = new ivm.Isolate({ memoryLimit: 128 });
+                        const vmContext = await isolate.createContext();
+
+                        // Pass a deep clone of the context data into the sandbox
+                        await vmContext.global.set('context', new ivm.ExternalCopy(context.data).copyInto());
+
+                        const script = await isolate.compileScript(`(function() { return ${scriptCode}; })()`);
+                        const result = await script.run(vmContext, { timeout: 1000 });
+
+                        // The condition script should return a boolean
+                        const isTrue = !!result;
+                        context.data[node.id] = { result: isTrue };
+
+                        // Instruct the flow engine which handle to follow
+                        context.data._nextHandle = isTrue ? 'true' : 'false';
+
+                        isolate.dispose();
+                    } catch (error: any) {
+                        console.error('Condition Error:', error.message);
+                        context.data[node.id] = { error: error.message };
+                        // Default to false path on error
+                        context.data._nextHandle = 'false';
+                    }
+                    break;
                 case 'transform':
                     console.log('Executing Transform script');
                     try {
@@ -199,7 +228,19 @@ export class FlowEngine {
             }
 
             // Find next node
-            const edge = flow.edges.find(e => e.source === currentNodeId);
+            // If the node we just executed dictated a specific handle (e.g. condition node), use it.
+            const handleToFollow = context.data._nextHandle;
+            delete context.data._nextHandle; // clean up for next iteration
+
+            const edge = flow.edges.find(e => {
+                if (e.source !== currentNodeId) return false;
+                // If the node requested a specific handle, the edge must match it
+                if (handleToFollow) {
+                    return e.sourceHandle === handleToFollow;
+                }
+                return true; // standard linear progression
+            });
+
             currentNodeId = edge ? edge.target : null;
         }
 

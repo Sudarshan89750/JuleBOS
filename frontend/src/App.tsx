@@ -25,6 +25,7 @@ import { Sidebar } from './Sidebar';
 import { ApiNode } from './nodes/ApiNode';
 import { TransformNode } from './nodes/TransformNode';
 import { EventNode } from './nodes/EventNode';
+import { ConditionNode } from './nodes/ConditionNode';
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -75,6 +76,7 @@ export default function App() {
     api_request: ApiNode,
     transform: TransformNode,
     event_publish: EventNode,
+    condition: ConditionNode,
   }), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -116,7 +118,7 @@ export default function App() {
         flow: {
           // Remove the onChange function before sending
           nodes: nodes.map(n => ({ id: n.id, type: n.type, data: { ...n.data, onChange: undefined } })),
-          edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target }))
+          edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle }))
         }
       };
 

@@ -25,6 +25,11 @@ export const Sidebar = () => {
         API Request
       </div>
 
+      <div className="bg-white border-2 border-red-500 rounded p-2 text-sm text-center cursor-grab hover:bg-red-50 shadow-sm"
+           onDragStart={(event) => onDragStart(event, 'condition')} draggable>
+        Condition (If/Else)
+      </div>
+
       <div className="bg-white border-2 border-yellow-500 rounded p-2 text-sm text-center cursor-grab hover:bg-yellow-50 shadow-sm"
            onDragStart={(event) => onDragStart(event, 'transform')} draggable>
         Transform JS
