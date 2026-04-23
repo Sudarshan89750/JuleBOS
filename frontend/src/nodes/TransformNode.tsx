@@ -21,7 +21,16 @@ export const TransformNode = ({ data }: any) => {
           />
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-yellow-500" />
+      <div className="flex flex-col items-end pr-2 pb-2 gap-2 text-xs font-semibold">
+        <div className="relative">
+          <span className="text-green-600 mr-4">Success</span>
+          <Handle type="source" position={Position.Right} id="success" className="w-3 h-3 bg-green-500 absolute -right-4 top-1" />
+        </div>
+        <div className="relative">
+          <span className="text-red-600 mr-4">Error</span>
+          <Handle type="source" position={Position.Right} id="error" className="w-3 h-3 bg-red-500 absolute -right-4 top-1" />
+        </div>
+      </div>
     </div>
   );
 };

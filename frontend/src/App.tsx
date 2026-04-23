@@ -26,6 +26,7 @@ import { ApiNode } from './nodes/ApiNode';
 import { TransformNode } from './nodes/TransformNode';
 import { EventNode } from './nodes/EventNode';
 import { ConditionNode } from './nodes/ConditionNode';
+import { VariableNode } from './nodes/VariableNode';
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -77,6 +78,7 @@ export default function App() {
     transform: TransformNode,
     event_publish: EventNode,
     condition: ConditionNode,
+    set_variable: VariableNode,
   }), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {

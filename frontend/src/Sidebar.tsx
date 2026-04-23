@@ -40,6 +40,11 @@ export const Sidebar = () => {
         Publish Event
       </div>
 
+      <div className="bg-white border-2 border-indigo-500 rounded p-2 text-sm text-center cursor-grab hover:bg-indigo-50 shadow-sm"
+           onDragStart={(event) => onDragStart(event, 'set_variable')} draggable>
+        Set Variable
+      </div>
+
       <div className="bg-white border-2 border-purple-500 rounded p-2 text-sm text-center cursor-grab hover:bg-purple-50 shadow-sm"
            onDragStart={(event) => onDragStart(event, 'response')} draggable>
         HTTP Response

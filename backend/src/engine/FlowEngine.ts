@@ -104,16 +104,10 @@ export class FlowEngine {
                     context.data.payload = context.data.trigger.payload || context.data.trigger.query; // Backwards compat
                     break;
                 case 'database':
-                    // We must avoid SQL injection. To do this properly, the user should provide a raw query with placeholders
-                    // (e.g. `SELECT * FROM users WHERE id = ?`) and an array of parameters.
-                    // However, to keep our `{{variable}}` string interpolation UX intact while fixing injection,
-                    // we will execute the query using parameterized logic instead of raw interpolated strings if possible,
-                    // but for this iteration, we will use a basic parameterized query executor instead.
                     console.log('Executing real DB query:', nodeData.query);
                     try {
                         const db = await getDb();
 
-                        // Extract `{{var}}` placeholders into parameterized array
                         const params: any[] = [];
                         const queryWithParams = node.data.query.replace(/\{\{([^}]+)\}\}/g, (match: string, path: string) => {
                             const lodashGet = require('lodash/get');
@@ -131,10 +125,12 @@ export class FlowEngine {
                             context.data[node.id] = { changes: result.changes, lastID: result.lastID };
                             context.data.dbResult = { changes: result.changes, lastID: result.lastID };
                         }
+                        context.data._nextHandle = 'success';
                     } catch (error: any) {
                         console.error('DB Error:', error.message);
                         context.data[node.id] = { error: error.message };
-                        context.data.dbResult = { error: error.message };
+                        context.data.error = error.message;
+                        context.data._nextHandle = 'error';
                     }
                     break;
                 case 'api_request':
@@ -148,9 +144,12 @@ export class FlowEngine {
                         });
                         context.data[node.id] = { status: response.status, data: response.data };
                         context.data.apiResult = context.data[node.id]; // helper alias
+                        context.data._nextHandle = 'success';
                     } catch (error: any) {
                         console.error('API Error:', error.message);
                         context.data[node.id] = { error: error.message, response: error.response?.data };
+                        context.data.error = error.message;
+                        context.data._nextHandle = 'error';
                     }
                     break;
                 case 'condition':
@@ -195,17 +194,27 @@ export class FlowEngine {
                         const result = await script.run(vmContext, { timeout: 1000 });
 
                         context.data[node.id] = result;
+                        context.data._nextHandle = 'success';
 
                         isolate.dispose();
                     } catch (error: any) {
                         console.error('Transform Error:', error.message);
                         context.data[node.id] = { error: error.message };
+                        context.data.error = error.message;
+                        context.data._nextHandle = 'error';
                     }
                     break;
                 case 'event_publish':
                     console.log('Publishing Event:', nodeData.topic);
                     // Mock event publishing (e.g. to Redis/Kafka)
                     context.data[node.id] = { published: true, topic: nodeData.topic, message: nodeData.message };
+                    break;
+                case 'set_variable':
+                    console.log(`Setting Variable: ${nodeData.key}`);
+                    if (!context.data.variables) {
+                        context.data.variables = {};
+                    }
+                    context.data.variables[nodeData.key] = nodeData.value;
                     break;
                 case 'response':
                     // Send response and end execution
