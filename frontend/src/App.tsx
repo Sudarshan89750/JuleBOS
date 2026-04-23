@@ -27,6 +27,7 @@ import { TransformNode } from './nodes/TransformNode';
 import { EventNode } from './nodes/EventNode';
 import { ConditionNode } from './nodes/ConditionNode';
 import { VariableNode } from './nodes/VariableNode';
+import { LoopNode } from './nodes/LoopNode';
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -79,6 +80,7 @@ export default function App() {
     event_publish: EventNode,
     condition: ConditionNode,
     set_variable: VariableNode,
+    loop: LoopNode,
   }), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {

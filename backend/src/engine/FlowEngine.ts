@@ -81,8 +81,17 @@ export class FlowEngine {
 
     private async executeFlow(flow: FlowDef, context: any) {
         let currentNodeId = context.currentNodeId;
+        let stepCount = 0;
+        const MAX_STEPS = 1000;
 
         while (currentNodeId) {
+            stepCount++;
+            if (stepCount > MAX_STEPS) {
+                console.error('MAX_STEPS exceeded. Aborting to prevent infinite loop.');
+                context.res.status(500).json({ error: 'Flow execution exceeded maximum allowed steps (infinite loop detected).' });
+                return;
+            }
+
             const node = flow.nodes.find(n => n.id === currentNodeId);
             if (!node) break;
 
@@ -215,6 +224,52 @@ export class FlowEngine {
                         context.data.variables = {};
                     }
                     context.data.variables[nodeData.key] = nodeData.value;
+                    break;
+                case 'loop':
+                    console.log(`Executing Loop`);
+
+                    // The user provides an array (e.g. from a previous transform or db node)
+                    // Since it's interpolated, if it was an object/array, ContextEngine returns the object.
+                    // If it's a string, we attempt to parse it.
+                    let items = nodeData.items;
+                    if (typeof items === 'string') {
+                        try { items = JSON.parse(items); } catch(e) { items = []; }
+                    }
+                    if (!Array.isArray(items)) {
+                        items = []; // Fallback if not an array
+                    }
+
+                    // Initialize or retrieve loop state
+                    if (!context.data._loopStates) context.data._loopStates = {};
+                    if (context.data._loopStates[node.id] === undefined) {
+                        context.data._loopStates[node.id] = 0; // start at index 0
+                    }
+
+                    const currentIndex = context.data._loopStates[node.id];
+
+                    if (currentIndex < items.length) {
+                        // We have an item to process
+                        const currentItem = items[currentIndex];
+
+                        // Expose to context so downstream nodes can use {{loopItem}}
+                        context.data.loopItem = currentItem;
+                        context.data.loopIndex = currentIndex;
+
+                        // Increment for the NEXT time the loop node is hit
+                        context.data._loopStates[node.id] = currentIndex + 1;
+
+                        // Follow the 'item' branch
+                        context.data._nextHandle = 'item';
+                    } else {
+                        // Loop is finished
+                        // Clean up state so it could theoretically be run again in the same flow
+                        delete context.data._loopStates[node.id];
+                        delete context.data.loopItem;
+                        delete context.data.loopIndex;
+
+                        // Follow the 'done' branch
+                        context.data._nextHandle = 'done';
+                    }
                     break;
                 case 'response':
                     // Send response and end execution
