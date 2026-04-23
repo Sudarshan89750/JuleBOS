@@ -12,6 +12,11 @@ export interface FlowEdge {
     target: string;
 }
 
+import { getDb } from '../db';
+import { interpolateObject } from './ContextEngine';
+import axios from 'axios';
+import ivm from 'isolated-vm';
+
 export interface FlowDef {
     nodes: FlowNode[];
     edges: FlowEdge[];
@@ -82,22 +87,111 @@ export class FlowEngine {
 
             console.log(`Executing node: ${node.type} (${node.id})`);
 
+            // Interpolate dynamic node data using current context
+            const nodeData = interpolateObject(node.data, context.data);
+
             // Execute node logic
             switch (node.type) {
                 case 'trigger':
                     // Just passes payload to next node
-                    context.data.payload = context.req.body || context.req.query;
+                    context.data.trigger = {
+                        payload: context.req.body,
+                        query: context.req.query,
+                        params: context.req.params,
+                        headers: context.req.headers
+                    };
+                    context.data.payload = context.data.trigger.payload || context.data.trigger.query; // Backwards compat
                     break;
                 case 'database':
-                    // Mock database execution
-                    console.log('Executing DB query:', node.data.query);
-                    context.data.dbResult = { status: 'success', mockData: true, collection: node.data.collection };
+                    // We must avoid SQL injection. To do this properly, the user should provide a raw query with placeholders
+                    // (e.g. `SELECT * FROM users WHERE id = ?`) and an array of parameters.
+                    // However, to keep our `{{variable}}` string interpolation UX intact while fixing injection,
+                    // we will execute the query using parameterized logic instead of raw interpolated strings if possible,
+                    // but for this iteration, we will use a basic parameterized query executor instead.
+                    console.log('Executing real DB query:', nodeData.query);
+                    try {
+                        const db = await getDb();
+
+                        // Extract `{{var}}` placeholders into parameterized array
+                        const params: any[] = [];
+                        const queryWithParams = node.data.query.replace(/\{\{([^}]+)\}\}/g, (match: string, path: string) => {
+                            const lodashGet = require('lodash/get');
+                            const val = lodashGet(context.data, path.trim());
+                            params.push(val);
+                            return '?';
+                        });
+
+                        if (queryWithParams.trim().toLowerCase().startsWith('select')) {
+                            const results = await db.all(queryWithParams, params);
+                            context.data[node.id] = results;
+                            context.data.dbResult = results;
+                        } else {
+                            const result = await db.run(queryWithParams, params);
+                            context.data[node.id] = { changes: result.changes, lastID: result.lastID };
+                            context.data.dbResult = { changes: result.changes, lastID: result.lastID };
+                        }
+                    } catch (error: any) {
+                        console.error('DB Error:', error.message);
+                        context.data[node.id] = { error: error.message };
+                        context.data.dbResult = { error: error.message };
+                    }
+                    break;
+                case 'api_request':
+                    console.log('Executing API Request:', nodeData.method, nodeData.url);
+                    try {
+                        const response = await axios({
+                            method: nodeData.method || 'GET',
+                            url: nodeData.url,
+                            headers: nodeData.headers ? JSON.parse(nodeData.headers) : undefined,
+                            data: nodeData.body ? JSON.parse(nodeData.body) : undefined
+                        });
+                        context.data[node.id] = { status: response.status, data: response.data };
+                        context.data.apiResult = context.data[node.id]; // helper alias
+                    } catch (error: any) {
+                        console.error('API Error:', error.message);
+                        context.data[node.id] = { error: error.message, response: error.response?.data };
+                    }
+                    break;
+                case 'transform':
+                    console.log('Executing Transform script');
+                    try {
+                        const scriptCode = nodeData.script;
+                        const isolate = new ivm.Isolate({ memoryLimit: 128 });
+                        const vmContext = await isolate.createContext();
+
+                        // Pass a deep clone of the context data into the sandbox
+                        await vmContext.global.set('context', new ivm.ExternalCopy(context.data).copyInto());
+
+                        const script = await isolate.compileScript(`(function() { return ${scriptCode}; })()`);
+                        const result = await script.run(vmContext, { timeout: 1000 });
+
+                        context.data[node.id] = result;
+
+                        isolate.dispose();
+                    } catch (error: any) {
+                        console.error('Transform Error:', error.message);
+                        context.data[node.id] = { error: error.message };
+                    }
+                    break;
+                case 'event_publish':
+                    console.log('Publishing Event:', nodeData.topic);
+                    // Mock event publishing (e.g. to Redis/Kafka)
+                    context.data[node.id] = { published: true, topic: nodeData.topic, message: nodeData.message };
                     break;
                 case 'response':
                     // Send response and end execution
-                    context.res.status(node.data.statusCode || 200).json({
+
+                    // If message uses dynamic syntax, try parsing it as JSON if it represents an object
+                    let finalMessage = nodeData.message || 'Flow executed';
+                    try {
+                        if (finalMessage.startsWith('{') || finalMessage.startsWith('[')) {
+                            finalMessage = JSON.parse(finalMessage);
+                        }
+                    } catch(e) {}
+
+                    context.res.status(nodeData.statusCode || 200).json({
                         result: context.data.dbResult || context.data.payload,
-                        message: node.data.message || 'Flow executed'
+                        data: finalMessage
                     });
                     return; // End flow
                 default:

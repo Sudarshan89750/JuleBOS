@@ -14,41 +14,26 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import axios from 'axios';
+import { nanoid } from 'nanoid';
 
 import { TriggerNode } from './nodes/TriggerNode';
 import { DatabaseNode } from './nodes/DatabaseNode';
 import { ResponseNode } from './nodes/ResponseNode';
+import { Sidebar } from './Sidebar';
 
-const initialNodes: Node[] = [
-  {
-    id: '1',
-    type: 'trigger',
-    position: { x: 100, y: 100 },
-    data: { method: 'GET', route: '/api/users' },
-  },
-  {
-    id: '2',
-    type: 'database',
-    position: { x: 400, y: 100 },
-    data: { collection: 'users', query: 'SELECT * FROM users' },
-  },
-  {
-    id: '3',
-    type: 'response',
-    position: { x: 700, y: 100 },
-    data: { statusCode: 200, message: 'Users fetched successfully' },
-  },
-];
+// Assuming these will be created next
+import { ApiNode } from './nodes/ApiNode';
+import { TransformNode } from './nodes/TransformNode';
+import { EventNode } from './nodes/EventNode';
 
-const initialEdges: Edge[] = [
-  { id: 'e1-2', source: '1', target: '2' },
-  { id: 'e2-3', source: '2', target: '3' },
-];
+const initialNodes: Node[] = [];
+const initialEdges: Edge[] = [];
 
 export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [deployStatus, setDeployStatus] = useState<string | null>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
   const onConnect = useCallback(
     (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
@@ -87,7 +72,42 @@ export default function App() {
     trigger: TriggerNode,
     database: DatabaseNode,
     response: ResponseNode,
+    api_request: ApiNode,
+    transform: TransformNode,
+    event_publish: EventNode,
   }), []);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const type = event.dataTransfer.getData('application/reactflow');
+
+      // check if the dropped element is valid
+      if (typeof type === 'undefined' || !type) {
+        return;
+      }
+
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const newNode: Node = {
+        id: nanoid(),
+        type,
+        position,
+        data: {}, // Initial data can be set via defaultValues in components
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [reactFlowInstance, setNodes],
+  );
 
   const deployFlow = async () => {
     try {
@@ -122,20 +142,26 @@ export default function App() {
         </div>
       </header>
 
-      <div style={{ flexGrow: 1 }}>
-        <ReactFlow
-          nodes={nodesWithOnChange}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          nodeTypes={nodeTypes}
-          fitView
-        >
-          <Controls />
-          <MiniMap />
-          <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-        </ReactFlow>
+      <div style={{ flexGrow: 1, display: 'flex' }}>
+        <Sidebar />
+        <div style={{ flexGrow: 1 }} className="reactflow-wrapper">
+          <ReactFlow
+            nodes={nodesWithOnChange}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onInit={setReactFlowInstance}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            nodeTypes={nodeTypes}
+            fitView
+          >
+            <Controls />
+            <MiniMap />
+            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+          </ReactFlow>
+        </div>
       </div>
     </div>
   );
