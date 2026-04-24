@@ -15,6 +15,11 @@ export const Sidebar = () => {
         HTTP Trigger
       </div>
 
+      <div className="bg-white border-2 border-stone-600 rounded p-2 text-sm text-center cursor-grab hover:bg-stone-50 shadow-sm"
+           onDragStart={(event) => onDragStart(event, 'auth')} draggable>
+        Auth (API Key)
+      </div>
+
       <div className="bg-white border-2 border-blue-500 rounded p-2 text-sm text-center cursor-grab hover:bg-blue-50 shadow-sm"
            onDragStart={(event) => onDragStart(event, 'database')} draggable>
         Database (SQLite)

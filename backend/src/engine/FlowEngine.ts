@@ -17,6 +17,7 @@ import { getDb } from '../db';
 import { interpolateObject } from './ContextEngine';
 import axios from 'axios';
 import ivm from 'isolated-vm';
+import crypto from 'crypto';
 
 export interface FlowDef {
     nodes: FlowNode[];
@@ -83,11 +84,12 @@ export class FlowEngine {
         let currentNodeId = context.currentNodeId;
         let stepCount = 0;
         const MAX_STEPS = 1000;
+        const executionId = crypto.randomUUID();
 
         while (currentNodeId) {
             stepCount++;
             if (stepCount > MAX_STEPS) {
-                console.error('MAX_STEPS exceeded. Aborting to prevent infinite loop.');
+                console.error(`[${executionId}] MAX_STEPS exceeded. Aborting to prevent infinite loop.`);
                 context.res.status(500).json({ error: 'Flow execution exceeded maximum allowed steps (infinite loop detected).' });
                 return;
             }
@@ -95,7 +97,9 @@ export class FlowEngine {
             const node = flow.nodes.find(n => n.id === currentNodeId);
             if (!node) break;
 
-            console.log(`Executing node: ${node.type} (${node.id})`);
+            console.log(`[${executionId}] Executing node: ${node.type} (${node.id})`);
+            const startTime = Date.now();
+            let executionStatus = 'success';
 
             // Interpolate dynamic node data using current context
             const nodeData = interpolateObject(node.data, context.data);
@@ -111,6 +115,22 @@ export class FlowEngine {
                         headers: context.req.headers
                     };
                     context.data.payload = context.data.trigger.payload || context.data.trigger.query; // Backwards compat
+                    break;
+                case 'auth':
+                    console.log('Evaluating Auth Node');
+                    const authHeader = (context.data.trigger?.headers && context.data.trigger.headers['authorization']) ? context.data.trigger.headers['authorization'] : '';
+                    const providedKey = authHeader.replace('Bearer ', '').trim();
+
+                    // Allow simple string or dynamic interpolation
+                    const expectedKey = nodeData.apiKey;
+
+                    if (providedKey && providedKey === expectedKey) {
+                        context.data._nextHandle = 'success';
+                    } else {
+                        console.warn(`Auth failed! Unauthorized. Provided: ${providedKey}, Expected: ${expectedKey}`);
+                        context.data.error = 'Unauthorized';
+                        context.data._nextHandle = 'unauthorized';
+                    }
                     break;
                 case 'database':
                     console.log('Executing real DB query:', nodeData.query);
@@ -286,15 +306,44 @@ export class FlowEngine {
                         result: context.data.dbResult || context.data.payload,
                         data: finalMessage
                     });
-                    return; // End flow
+                    break;
                 default:
                     console.log(`Unknown node type: ${node.type}`);
+            }
+
+            if (context.data._nextHandle === 'error' || context.data.error) {
+                executionStatus = 'error';
+            }
+
+            // Trace Execution Logging
+            try {
+                const db = await getDb();
+
+                // Deep clone the context to safely remove noisy data without mutating the live flow state
+                const traceContext = structuredClone(context.data);
+
+                // Filter out large/noisy objects from the DB trace
+                if (traceContext.trigger && traceContext.trigger.headers) {
+                    delete traceContext.trigger.headers;
+                }
+
+                await db.run(`
+                    INSERT INTO execution_logs (execution_id, node_id, node_type, duration_ms, status, context_snapshot)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `, [executionId, node.id, node.type, Date.now() - startTime, executionStatus, JSON.stringify(traceContext)]);
+            } catch (err) {
+                console.error("Failed to write execution log:", err);
+            }
+
+            if (node.type === 'response') {
+                return; // End flow
             }
 
             // Find next node
             // If the node we just executed dictated a specific handle (e.g. condition node), use it.
             const handleToFollow = context.data._nextHandle;
             delete context.data._nextHandle; // clean up for next iteration
+            delete context.data.error; // clear error state for next node
 
             const edge = flow.edges.find(e => {
                 if (e.source !== currentNodeId) return false;

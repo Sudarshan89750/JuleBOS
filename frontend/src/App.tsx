@@ -28,6 +28,7 @@ import { EventNode } from './nodes/EventNode';
 import { ConditionNode } from './nodes/ConditionNode';
 import { VariableNode } from './nodes/VariableNode';
 import { LoopNode } from './nodes/LoopNode';
+import { AuthNode } from './nodes/AuthNode';
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -81,6 +82,7 @@ export default function App() {
     condition: ConditionNode,
     set_variable: VariableNode,
     loop: LoopNode,
+    auth: AuthNode,
   }), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {

@@ -18,6 +18,17 @@ export async function getDb() {
                 name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS execution_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                execution_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                node_type TEXT NOT NULL,
+                started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                duration_ms INTEGER,
+                status TEXT NOT NULL,
+                context_snapshot TEXT
+            );
         `);
 
         // Insert some seed data if empty
