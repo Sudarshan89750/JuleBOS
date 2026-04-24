@@ -18,6 +18,7 @@ import { interpolateObject } from './ContextEngine';
 import axios from 'axios';
 import ivm from 'isolated-vm';
 import crypto from 'crypto';
+import * as cron from 'node-cron';
 
 export interface FlowDef {
     nodes: FlowNode[];
@@ -28,6 +29,8 @@ export class FlowEngine {
     private app: Application;
     // Store registered flows mapped by `${METHOD} ${ROUTE}`
     private routeMap: Map<string, { flow: FlowDef, triggerNodeId: string }> = new Map();
+    // Track active cron jobs so we can cancel them on re-deploy
+    private activeCrons: Map<string, cron.ScheduledTask> = new Map();
 
     constructor(app: Application) {
         this.app = app;
@@ -64,20 +67,52 @@ export class FlowEngine {
     }
 
     registerFlow(flow: FlowDef) {
-        // Find the HTTP trigger node
-        const triggerNode = flow.nodes.find(n => n.type === 'trigger');
-        if (!triggerNode) {
-            throw new Error('Flow must contain a Trigger node');
+        // Identify what kind of trigger this flow uses
+        const httpTrigger = flow.nodes.find(n => n.type === 'trigger');
+        const cronTrigger = flow.nodes.find(n => n.type === 'cron_trigger');
+
+        if (!httpTrigger && !cronTrigger) {
+            throw new Error('Flow must contain either an HTTP Trigger or a Cron Trigger node');
         }
 
-        const method = (triggerNode.data.method || 'GET').toLowerCase();
-        const route = triggerNode.data.route || '/api/dynamic';
-        const key = `${method} ${route}`;
+        if (httpTrigger) {
+            const method = (httpTrigger.data.method || 'GET').toLowerCase();
+            const route = httpTrigger.data.route || '/api/dynamic';
+            const key = `${method} ${route}`;
 
-        // Save or update the flow in the map
-        this.routeMap.set(key, { flow, triggerNodeId: triggerNode.id });
+            // Save or update the flow in the map
+            this.routeMap.set(key, { flow, triggerNodeId: httpTrigger.id });
+            console.log(`Registered dynamic route: [${method.toUpperCase()}] ${route}`);
+        }
 
-        console.log(`Registered dynamic route: [${method.toUpperCase()}] ${route}`);
+        if (cronTrigger) {
+            // Generate a deterministic identifier for this specific flow's cron job (using node ID as key)
+            const cronKey = `cron_${cronTrigger.id}`;
+
+            // Cancel existing cron if re-deploying
+            if (this.activeCrons.has(cronKey)) {
+                this.activeCrons.get(cronKey)?.stop();
+                this.activeCrons.delete(cronKey);
+            }
+
+            const expression = cronTrigger.data.expression || '* * * * *';
+            const task = cron.schedule(expression, async () => {
+                console.log(`[CRON] Executing scheduled flow for expression: ${expression}`);
+                const context = {
+                    req: { body: {}, query: {}, params: {}, headers: {} }, // Mock req
+                    res: {
+                        status: () => ({ json: () => {} }), // Mock res to ignore response nodes
+                        headersSent: true
+                    },
+                    data: {},
+                    currentNodeId: cronTrigger.id
+                };
+                await this.executeFlow(flow, context);
+            });
+
+            this.activeCrons.set(cronKey, task);
+            console.log(`Registered Cron schedule: ${expression}`);
+        }
     }
 
     private async executeFlow(flow: FlowDef, context: any) {
@@ -107,12 +142,13 @@ export class FlowEngine {
             // Execute node logic
             switch (node.type) {
                 case 'trigger':
+                case 'cron_trigger':
                     // Just passes payload to next node
                     context.data.trigger = {
-                        payload: context.req.body,
-                        query: context.req.query,
-                        params: context.req.params,
-                        headers: context.req.headers
+                        payload: context.req.body || {},
+                        query: context.req.query || {},
+                        params: context.req.params || {},
+                        headers: context.req.headers || {}
                     };
                     context.data.payload = context.data.trigger.payload || context.data.trigger.query; // Backwards compat
                     break;
@@ -245,6 +281,11 @@ export class FlowEngine {
                     }
                     context.data.variables[nodeData.key] = nodeData.value;
                     break;
+                case 'delay':
+                    const waitTime = parseInt(nodeData.duration) || 1000;
+                    console.log(`Executing Delay: Sleeping for ${waitTime}ms`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    break;
                 case 'loop':
                     console.log(`Executing Loop`);
 
@@ -292,20 +333,25 @@ export class FlowEngine {
                     }
                     break;
                 case 'response':
-                    // Send response and end execution
+                    // Send response but DO NOT end execution if there are downstream nodes attached to this
 
-                    // If message uses dynamic syntax, try parsing it as JSON if it represents an object
-                    let finalMessage = nodeData.message || 'Flow executed';
-                    try {
-                        if (finalMessage.startsWith('{') || finalMessage.startsWith('[')) {
-                            finalMessage = JSON.parse(finalMessage);
-                        }
-                    } catch(e) {}
+                    if (!context.res.headersSent) {
+                        // If message uses dynamic syntax, try parsing it as JSON if it represents an object
+                        let finalMessage = nodeData.message || 'Flow executed';
+                        try {
+                            if (finalMessage.startsWith('{') || finalMessage.startsWith('[')) {
+                                finalMessage = JSON.parse(finalMessage);
+                            }
+                        } catch(e) {}
 
-                    context.res.status(nodeData.statusCode || 200).json({
-                        result: context.data.dbResult || context.data.payload,
-                        data: finalMessage
-                    });
+                        context.res.status(nodeData.statusCode || 200).json({
+                            result: context.data.dbResult || context.data.payload,
+                            data: finalMessage
+                        });
+                        console.log(`[${executionId}] HTTP Response sent (Async Flow Detachment)`);
+                    } else {
+                        console.warn(`[${executionId}] Tried to send response but headers already sent.`);
+                    }
                     break;
                 default:
                     console.log(`Unknown node type: ${node.type}`);
@@ -333,10 +379,6 @@ export class FlowEngine {
                 `, [executionId, node.id, node.type, Date.now() - startTime, executionStatus, JSON.stringify(traceContext)]);
             } catch (err) {
                 console.error("Failed to write execution log:", err);
-            }
-
-            if (node.type === 'response') {
-                return; // End flow
             }
 
             // Find next node

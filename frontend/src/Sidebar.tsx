@@ -15,6 +15,11 @@ export const Sidebar = () => {
         HTTP Trigger
       </div>
 
+      <div className="bg-white border-2 border-emerald-500 rounded p-2 text-sm text-center cursor-grab hover:bg-emerald-50 shadow-sm"
+           onDragStart={(event) => onDragStart(event, 'cron_trigger')} draggable>
+        Cron Trigger
+      </div>
+
       <div className="bg-white border-2 border-stone-600 rounded p-2 text-sm text-center cursor-grab hover:bg-stone-50 shadow-sm"
            onDragStart={(event) => onDragStart(event, 'auth')} draggable>
         Auth (API Key)
@@ -53,6 +58,11 @@ export const Sidebar = () => {
       <div className="bg-white border-2 border-cyan-500 rounded p-2 text-sm text-center cursor-grab hover:bg-cyan-50 shadow-sm"
            onDragStart={(event) => onDragStart(event, 'loop')} draggable>
         For Each Loop
+      </div>
+
+      <div className="bg-white border-2 border-slate-500 rounded p-2 text-sm text-center cursor-grab hover:bg-slate-50 shadow-sm"
+           onDragStart={(event) => onDragStart(event, 'delay')} draggable>
+        Delay
       </div>
 
       <div className="bg-white border-2 border-purple-500 rounded p-2 text-sm text-center cursor-grab hover:bg-purple-50 shadow-sm"

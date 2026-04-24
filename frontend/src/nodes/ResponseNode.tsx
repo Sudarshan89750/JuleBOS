@@ -29,6 +29,12 @@ export const ResponseNode = ({ data }: any) => {
           />
         </div>
       </div>
+      <div className="flex flex-col items-end pr-2 pb-2 gap-2 text-xs font-semibold">
+        <div className="relative">
+          <span className="text-gray-500 mr-4 italic">Background Tasks</span>
+          <Handle type="source" position={Position.Right} className="w-3 h-3 bg-purple-500 absolute -right-4 top-1" />
+        </div>
+      </div>
     </div>
   );
 };

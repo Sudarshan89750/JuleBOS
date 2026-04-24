@@ -29,6 +29,8 @@ import { ConditionNode } from './nodes/ConditionNode';
 import { VariableNode } from './nodes/VariableNode';
 import { LoopNode } from './nodes/LoopNode';
 import { AuthNode } from './nodes/AuthNode';
+import { CronTriggerNode } from './nodes/CronTriggerNode';
+import { DelayNode } from './nodes/DelayNode';
 import { HistoryPanel } from './HistoryPanel';
 
 const initialNodes: Node[] = [];
@@ -85,6 +87,8 @@ export default function App() {
     set_variable: VariableNode,
     loop: LoopNode,
     auth: AuthNode,
+    cron_trigger: CronTriggerNode,
+    delay: DelayNode,
   }), []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
