@@ -29,6 +29,7 @@ import { ConditionNode } from './nodes/ConditionNode';
 import { VariableNode } from './nodes/VariableNode';
 import { LoopNode } from './nodes/LoopNode';
 import { AuthNode } from './nodes/AuthNode';
+import { HistoryPanel } from './HistoryPanel';
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -38,6 +39,7 @@ export default function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [deployStatus, setDeployStatus] = useState<string | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const onConnect = useCallback(
     (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
@@ -142,6 +144,12 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {deployStatus && <span style={{ fontSize: '0.9rem', color: deployStatus.startsWith('Error') ? '#ff6b6b' : '#51cf66' }}>{deployStatus}</span>}
           <button
+            onClick={() => setShowHistory(!showHistory)}
+            style={{ background: '#2c2c3e', color: 'white', border: '1px solid #4c6ef5', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            History
+          </button>
+          <button
             onClick={deployFlow}
             style={{ background: '#4c6ef5', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
           >
@@ -150,7 +158,8 @@ export default function App() {
         </div>
       </header>
 
-      <div style={{ flexGrow: 1, display: 'flex' }}>
+      <div style={{ flexGrow: 1, display: 'flex', position: 'relative' }}>
+        {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
         <Sidebar />
         <div style={{ flexGrow: 1 }} className="reactflow-wrapper">
           <ReactFlow
