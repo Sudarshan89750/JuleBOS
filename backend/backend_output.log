@@ -1,0 +1,18 @@
+
+> backend@1.0.0 start
+> ts-node src/index.ts
+
+JuleBOS Engine running on port 3001
+Registered dynamic route: [GET] /api/users
+Executing node: trigger (1)
+Executing node: database (2)
+Executing DB query: SELECT * FROM users
+Executing node: response (3)
+Terminated
+npm error Lifecycle script `start` failed with error:
+npm error code 143
+npm error path /app/backend
+npm error workspace backend@1.0.0
+npm error location /app/backend
+npm error command failed
+npm error command sh -c ts-node src/index.ts
